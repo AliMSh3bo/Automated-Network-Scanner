@@ -1,0 +1,107 @@
+import nmap
+import json
+from datetime import datetime
+from jinja2 import Template
+
+def run_network_scan(target_subnet):
+    print(f"[+] Starting network scan on: {target_subnet}")
+    nm = nmap.PortScanner()
+    
+    # عمل فحص للبورتات الأكثر شهرة (22, 80, 443, 445, 3389) لمعرفة الأجهزة النشطة
+    nm.scan(hosts=target_subnet, arguments='-p 22,80,443,445,3389 --open')
+    
+    scan_results = []
+    
+    for host in nm.all_hosts():
+        host_data = {
+            "ip": host,
+            "hostname": nm[host].hostname() if nm[host].hostname() else "Unknown",
+            "status": nm[host].state(),
+            "ports": []
+        }
+        
+        # جمع معلومات البورتات المفتوحة
+        for proto in nm[host].all_protocols():
+            lport = nm[host][proto].keys()
+            for port in lport:
+                port_info = {
+                    "port": port,
+                    "protocol": proto,
+                    "state": nm[host][proto][port]['state'],
+                    "name": nm[host][proto][port]['name']
+                }
+                host_data["ports"].append(port_info)
+                
+        scan_results.append(host_data)
+        
+    return scan_results
+
+def generate_html_report(scan_data):
+    current_time = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+    
+    # قالب الـ HTML مصمم بشكل عصري ومتناسق (Clean Setup)
+    html_template = """
+    <!DOCTYPE html>
+    <html lang="en">
+    <head>
+        <meta charset="UTF-8">
+        <title>Network Scan Report</title>
+        <style>
+            body { font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; background-color: #f4f6f9; color: #333; margin: 40px; }
+            h1 { color: #1e3d59; border-bottom: 2px solid #1e3d59; padding-bottom: 10px; }
+            .meta { font-style: italic; color: #666; margin-bottom: 20px; }
+            .host-card { background: white; padding: 20px; margin-bottom: 15px; border-radius: 8px; box-shadow: 0 4px 6px rgba(0,0,0,0.05); }
+            .host-ip { color: #ff6e40; font-size: 1.2em; font-weight: bold; }
+            table { width: 100%; border-collapse: collapse; margin-top: 10px; }
+            th, td { padding: 10px; text-align: left; border-bottom: 1px solid #ddd; }
+            th { background-color: #1e3d59; color: white; }
+            .badge { background-color: #4caf50; color: white; padding: 3px 8px; border-radius: 4px; font-size: 0.9em; }
+        </style>
+    </head>
+    <body>
+        <h1>Automated Network Audit Report</h1>
+        <p class="meta">Scan Executed On: {{ timestamp }}</p>
+        
+        {% for host in hosts %}
+        <div class="host-card">
+            <div class="host-ip">🌐 IP Address: {{ host.ip }} ({{ host.hostname }})</div>
+            <p>Status: <span class="badge">{{ host.status }}</span></p>
+            
+            {% if host.ports %}
+            <table>
+                <tr>
+                    <th>Port</th>
+                    <th>Protocol</th>
+                    <th>Service</th>
+                    <th>State</th>
+                </tr>
+                {% for port in host.ports %}
+                <tr>
+                    <td><strong>{{ port.port }}</strong></td>
+                    <td>{{ port.protocol | upper }}</td>
+                    <td>{{ port.name }}</td>
+                    <td><span style="color: green;">{{ port.state }}</span></td>
+                </tr>
+                {% endfor %}
+            </table>
+            {% else %}
+            <p style="color: #777;">No open core ports detected on this host.</p>
+            {% endif %}
+        </div>
+        {% endfor %}
+    </body>
+    </html>
+    """
+    
+    template = Template(html_template)
+    rendered_html = template.render(hosts=scan_data, timestamp=current_time)
+    
+    with open("network_report.html", "w", encoding="utf-8") as f:
+        f.write(rendered_html)
+    print("[+] Report generated successfully: 'network_report.html'")
+
+if __name__ == "__main__":
+    # عدل الـ Subnet دي بناءً على شبكة المعمل أو البيت عندك (مثال: 192.168.1.0/24)
+    target = "192.168.1.0/24" 
+    results = run_network_scan(target)
+    generate_html_report(results)
